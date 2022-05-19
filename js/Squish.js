@@ -5,6 +5,8 @@ class Squish {
             return '' + this.x +' ' + this.y + ' '+ this.z
         }
         object.squish = this;
+
+        
         let geometry = object.geometry;
         this.object = object;
         this.geometry = object.geometry;
@@ -12,6 +14,10 @@ class Squish {
         this.otherControls = otherControls;
         this.clickIdx = null;
         this.movePoint = null;
+        this.debugShader = false;
+        this.uniforms = {
+            'maxExpansion' : {'value' : this.maxExpansion}
+        };
 
         this.stiffness = 50.0;
         this.originForce = 50.0;
@@ -29,6 +35,7 @@ class Squish {
         this.guiActions.add(this,'initialRandom',0.0,10.0).name('Offset Strength');
         this.guiActions.add(this,'addOffset').name('Add Random Offset');
         this.guiActions.add(this,'fromCenter').name('Move All to Center');
+        this.guiActions.add(this,'swapShader').name('Fancy Shader');
         this.guiActions.open()
         this.guiFolder.open()
 
@@ -113,6 +120,10 @@ class Squish {
             this.uniquePositionsData[i]+=Math.sin(i*13010+0.1)*this.initialRandom
         }
         this.framesCalced = 0;
+        this.uniqueExpansion = new Float32Array(this.uniquePositions.length);
+        this.expansion = new Float32Array(this.pos.length/3);
+        this.geometry.setAttribute('expansion', new THREE.BufferAttribute(this.expansion,1));
+
     }
     
     animate(deltaTime) {
@@ -126,6 +137,7 @@ class Squish {
             
         //}
         let maxDistance = 0.0;
+        let maxExpansion = 0.0;
         for(let i = 0; i < this.uniqueIdxs.length; i += 3){
             for(let j = 0; j < 3; j++){
                 // connections for some array a of THREE.Vector3s starting at i
@@ -140,6 +152,14 @@ class Squish {
                 let b = new THREE.Vector3(this.uniquePositionsData[this.uniqueIdxs[k]*3],this.uniquePositionsData[this.uniqueIdxs[k]*3+1],this.uniquePositionsData[this.uniqueIdxs[k]*3+2]);
                 maxDistance = Math.max(Math.abs(a.distanceTo(b)-this.startDist[i+j]),maxDistance);
                 let force = (a.distanceTo(b)-this.startDist[i+j])*this.stiffness*this.startDist[i+j]*deltaTime; //TODO (?): Currently assumes time is constant
+                if(aIdx/3 > 2000){
+                    debugger;
+                }
+                this.uniqueExpansion[aIdx/3] += force;
+                this.uniqueExpansion[bIdx/3] += force;
+                if(maxExpansion < Math.abs(force)){
+                    maxExpansion = Math.abs(force);
+                }
                 if(isNaN(force)){
                     debugger;
                 }
@@ -169,7 +189,9 @@ class Squish {
                 this.pos[idx*3] = this.uniquePositionsData[i*3]
                 this.pos[idx*3+1] = this.uniquePositionsData[i*3+1]
                 this.pos[idx*3+2] = this.uniquePositionsData[i*3+2]
+                this.expansion[idx] = this.uniqueExpansion[i];
             }
+            this.uniqueExpansion[i] = 0;
         }
         this.framesCalced += 1;
         if(this.clickIdx != null && this.movePoint != null){
@@ -183,6 +205,8 @@ class Squish {
 
         //velocity[3] += 0.001;
         //geometry.setAttribute('position',pos);
+        this.uniforms.maxExpansion.value = maxExpansion;
+        this.geometry.attributes.expansion.needsUpdate = true;
         this.geometry.attributes.position.needsUpdate = true;
         //cube.rotation.x += 0.01;
         //cube.rotation.y += 0.015;
@@ -246,6 +270,24 @@ class Squish {
     stopDrag(){
         this.clickIdx = null;
         this.movePoint = null;
+    }
+    swapShader(){
+        const material = new THREE.ShaderMaterial( {
+
+            uniforms: this.uniforms,
+        
+            vertexShader: document.getElementById( 'vertexshader' ).textContent,
+        
+            fragmentShader: document.getElementById( 'fragmentshader' ).textContent
+        
+        } );
+        if(!this.debugShader){
+            this.normalMaterial = this.object.material;
+            this.object.material = Array(17).fill(material);
+        }else{
+            this.object.material = this.normalMaterial;
+        }
+        this.debugShader = !this.debugShader;
     }
 }
 export {Squish}
